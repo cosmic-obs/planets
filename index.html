@@ -97,6 +97,10 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
 .objcard .yes { color: var(--accent); }
 .objcard dd.wrap { white-space: normal; }
 #c-dial { flex: none; width: 84px; height: 84px; }
+/* folded up, the card is its title bar and one line: when, and where it is */
+.x.fold { font-size: 20px; padding: 0 6px; align-self: center; }
+#c-brief, .objcard.folded #c-body { display: none; }
+.objcard.folded #c-brief { display: block; }
 #c-curve { display: block; width: 100%; height: 74px; margin-top: 8px; }
 
 .key h2 { margin: 0 0 2px; font: 600 16px var(--font-ui); }
@@ -190,11 +194,14 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
 </section>
 
 <section class="panel dialog objcard" id="card" hidden>
-  <div class="panel-top"><b id="c-id"></b><span id="c-name"></span><button type="button" class="pill mini" id="c-sky" title="See this moment as the sky overhead">Sky</button><button type="button" class="x" id="c-close" aria-label="Close">×</button></div>
-  <p class="obj-facts" id="c-facts"></p>
-  <p class="obj-facts" id="c-best"></p>
-  <div class="obj-row"><dl id="c-dl"></dl><canvas id="c-dial" aria-label="Where it is in the sky"></canvas></div>
-  <canvas id="c-curve" aria-label="Its altitude through that night"></canvas>
+  <div class="panel-top"><b id="c-id"></b><span id="c-name"></span><button type="button" class="pill mini" id="c-sky" title="See this moment as the sky overhead">Sky</button><button type="button" class="x fold" id="c-fold" aria-controls="c-body"></button><button type="button" class="x" id="c-close" aria-label="Close">×</button></div>
+  <p class="obj-facts" id="c-brief"></p>
+  <div id="c-body">
+    <p class="obj-facts" id="c-facts"></p>
+    <p class="obj-facts" id="c-best"></p>
+    <div class="obj-row"><dl id="c-dl"></dl><canvas id="c-dial" aria-label="Where it is in the sky"></canvas></div>
+    <canvas id="c-curve" aria-label="Its altitude through that night"></canvas>
+  </div>
 </section>
 
 <script src="planets.js"></script>
@@ -1135,6 +1142,7 @@ function fillCard() {
   ];
   if (m) rows.push(['Moon', m.alt > -0.833 ? `${Math.max(0, Math.round(m.alt))}° up, ${Math.round(100 * m.frac)}% lit` : 'down']);
   rows.push(['View', ok ? 'yes' : alt < 0 ? 'no, not up' : alt < VIS_ALT ? `no, under ${VIS_ALT}°` : 'no, the sky is too bright']);
+  $('c-brief').textContent = `${dayLabel(tc >= 24 ? d + 1 : d)} ${hm(tc)} · ${alt < 0 ? 'below the horizon' : `${Math.round(alt)}° up, ${COMPASS[Math.round(az / 22.5) % 16]}`} · ${ok ? 'in view' : 'not in view'}`;
   const dl = $('c-dl');
   dl.replaceChildren();
   for (const [k, v] of rows) {
@@ -1145,6 +1153,7 @@ function fillCard() {
     if (k === 'When') dd.className = 'wrap'; // the small hours add the night's date; let that wrap, not vanish
     dl.append(dt, dd);
   }
+  if (cardFolded) return; // nothing to draw on while its canvases are folded away
   drawDial(alt, az, m, jd);
   drawNightCurve(o, d, t);
 }
@@ -1355,6 +1364,23 @@ $('zin').addEventListener('click', () => animateZoom(...centre(), 2));
 $('zout').addEventListener('click', () => animateZoom(...centre(), 0.5));
 $('zfit').addEventListener('click', () => { view.s = 1; clampView(); redraw(); });
 $('c-close').addEventListener('click', () => select(null));
+// the card folds up to its title and one line, so it covers less of the chart (most use on a phone); remembered
+let cardFolded = false;
+try { cardFolded = localStorage.getItem('planet-calendar-card-folded') === '1'; } catch {}
+function syncFold() {
+  const b = $('c-fold');
+  $('card').classList.toggle('folded', cardFolded);
+  b.textContent = cardFolded ? '▾' : '▴';
+  b.setAttribute('aria-expanded', String(!cardFolded));
+  b.setAttribute('aria-label', cardFolded ? 'Unfold the card' : 'Fold the card up');
+}
+$('c-fold').addEventListener('click', () => {
+  cardFolded = !cardFolded;
+  try { localStorage.setItem('planet-calendar-card-folded', cardFolded ? '1' : '0'); } catch {}
+  syncFold();
+  if (sel) { fillCard(); DIALOGS.card.open(); }
+});
+syncFold();
 // the key and the location panel: one at a time, and either closes the planet's card
 const PANELS = { key: 'keybtn', place: 'placebtn' };
 function showPanel(id) {
