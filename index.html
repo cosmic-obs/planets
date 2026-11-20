@@ -63,11 +63,13 @@ body.morphing #chart { pointer-events: none; }
 #yearbtn { margin-inline: -4px; }
 .pill .n { margin-left: 6px; font-weight: 400; opacity: 0.7; }
 .chips { flex: none; display: flex; gap: 6px; }
-/* a planet's chip: its colour as a dot and a rim while it's drawn, hollow and grey while it's off */
+/* a planet's chip: hollow and grey while it's off, its colour as a dot and a rim while it's drawn, filled with its colour while picked */
 .planet { color: var(--soft); background: transparent; }
 .planet i { display: inline-block; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; border: 1.5px solid var(--soft); box-sizing: border-box; }
 .planet[aria-pressed="true"] { color: var(--ink); border-color: var(--c); }
 .planet[aria-pressed="true"] i { background: var(--c); border-color: var(--c); }
+.planet.sel { color: var(--bg); background: var(--c); font-weight: 600; }
+.planet.sel i { background: var(--bg); border-color: var(--bg); }
 input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
 .zoom { position: fixed; z-index: 2; right: max(12px, env(safe-area-inset-right, 0px)); bottom: calc(var(--bar-h, 52px) + 12px); display: grid; gap: 6px; }
 .zbtn { width: 40px; height: 40px; border-radius: 10px; font: 500 18px/1 var(--font-data); display: grid; place-items: center; }
@@ -186,7 +188,7 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
     <li><i class="full"></i>The night of the full Moon</li>
     <li><i class="dst"></i>Summer time: the times up the hour lines turn lilac and show the clock, an hour ahead of the ruler</li>
   </ul>
-  <p>The chart is drawn in the place's standard time, so the lines stay smooth through the year; the bar beside the dates marks summer time, when clocks run ahead of it. Times written out (the night tag, the planet's card, the readout under the pointer) are clock times, summer time included. Lines are drawn between sunset and sunrise only. Dark enough to see a planet means the Sun at least 6° down, or full darkness for Uranus and Neptune. Tap a date on the left to pick a night (tonight is picked when the page opens). Tap a line or its name to pick that planet. Its card shows where it is at the moment under the pointer, or wherever you last tapped. Pinch or scroll to zoom, drag to move. The chips in the bar choose which planets are drawn. Sky turns the picked night into the sky overhead: each planet flies from its place on the night's row to where it stands in the sky (tapping the date tag or the night's label does the same).</p>
+  <p>The chart is drawn in the place's standard time, so the lines stay smooth through the year; the bar beside the dates marks summer time, when clocks run ahead of it. Times written out (the night tag, the planet's card, the readout under the pointer) are clock times, summer time included. Lines are drawn between sunset and sunrise only. Dark enough to see a planet means the Sun at least 6° down, or full darkness for Uranus and Neptune. Tap a date on the left to pick a night (tonight is picked when the page opens). Tap a line or its name to pick that planet. Its card shows where it is at the moment under the pointer, or wherever you last tapped. Pinch or scroll to zoom, drag to move. Tapping a planet's chip in the bar steps it from drawn to picked to off, and back to drawn. Sky turns the picked night into the sky overhead: each planet flies from its place on the night's row to where it stands in the sky (tapping the date tag or the night's label does the same).</p>
 </section>
 
 <section class="panel dialog place" id="place" hidden>
@@ -1144,6 +1146,7 @@ function select(hit) {
     DIALOGS.card.open();
   }
   showHover();
+  syncChips();
   redraw();
 }
 const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
@@ -1449,7 +1452,7 @@ window.addEventListener('keydown', e => {
 
 
 const toolbar = $('toolbar');
-// ---------- the planets in the bar: a chip each, to draw it or leave it off ----------
+// ---------- the planets in the bar: a chip each, tapped round from drawn to picked to off ----------
 const chips = $('chips');
 for (const o of OBJS) {
   const b = document.createElement('button');
@@ -1458,10 +1461,25 @@ for (const o of OBJS) {
   b.dataset.id = o.id;
   b.style.setProperty('--c', o.color);
   b.append(document.createElement('i'), o.id);
-  b.addEventListener('click', () => setHidden(o.id, isShown(o)));
+  b.addEventListener('click', () => {
+    if (!isShown(o)) setHidden(o.id, false);
+    else if (sel !== o) pickFromChip(o);
+    else setHidden(o.id, true);
+  });
   chips.append(b);
 }
-function syncChips() { for (const b of chips.children) b.setAttribute('aria-pressed', String(!hidden.has(b.dataset.id))); }
+// picked from its chip: on the picked night, where it's highest, or else where it rises or sets, or else at midnight
+function pickFromChip(o) {
+  const d = selDay, t = KINDS.map(k => lineAt(o, k, d)).find(t => t != null) ?? 24;
+  select({ o, d, t });
+}
+function syncChips() {
+  for (const b of chips.children) {
+    b.setAttribute('aria-pressed', String(!hidden.has(b.dataset.id)));
+    b.classList.toggle('sel', !!sel && sel.id === b.dataset.id);
+    b.title = hidden.has(b.dataset.id) ? 'Off: tap to draw it' : b.classList.contains('sel') ? 'Picked: tap to turn it off' : 'Drawn: tap to pick it';
+  }
+}
 function setHidden(id, hide) {
   hide ? hidden.add(id) : hidden.delete(id);
   try { localStorage.setItem('planet-calendar-hidden', JSON.stringify([...hidden])); } catch {}
