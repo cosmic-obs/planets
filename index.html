@@ -112,7 +112,8 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
 .key li { display: flex; align-items: center; gap: 10px; }
 .key i { flex: none; display: inline-block; width: 26px; height: 12px; border: 1px solid var(--line); border-radius: 2px; }
 .key i.l1 { height: 0; border: 0; border-top: 2px solid #f0b46a; }
-.key i.l3 { height: 0; border: 0; border-top: 1.5px dashed #f0b46a; }
+.key i.up, .key i.down { border: 0; border-radius: 0; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='26' height='12'%3E%3Cpath d='M1 8l3-3 3 3M10 8l3-3 3 3M19 8l3-3 3 3' fill='none' stroke='%23f0b46a' stroke-width='1.4'/%3E%3C/svg%3E"); }
+.key i.down { transform: scaleY(-1); }
 .key i.dot { width: 8px; height: 8px; border-radius: 50%; background: #f0b46a; border: 0; margin-inline: 9px; }
 .key i.vis { background: linear-gradient(90deg, rgba(240, 180, 106, 0.1), rgba(240, 180, 106, 0.25) 55%, rgba(240, 180, 106, 0.6) 55%); }
 .key i.vis10 { height: 0; border: 0; border-top: 1.5px solid rgba(240, 180, 106, 0.95); }
@@ -176,7 +177,8 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
     <li><i style="background: var(--sky-3)"></i>Civil twilight</li>
     <li><i style="background: var(--sky-4)"></i>Daylight</li>
     <li><i class="l1"></i>Solid line: when the planet is highest in the sky</li>
-    <li><i class="l3"></i>Dashed lines: when it rises and when it sets (each is named on the chart)</li>
+    <li><i class="up"></i>Line of up chevrons: when it rises (each line is named on the chart)</li>
+    <li><i class="down"></i>Line of down chevrons: when it sets</li>
     <li><i class="dot"></i>Its best nights: opposition, or for Mercury and Venus the evenings or mornings when it stands farthest from the Sun</li>
     <li><i class="vis"></i>Picked planet: shaded while it's up, solid where it's at least 10° up with the sky dark enough to see it</li>
     <li><i class="vis10"></i>Picked planet: 10° up, the line for viewing; fainter dashed lines at 20° and 30°</li>
@@ -958,7 +960,8 @@ function drawAltLines(o) {
     ctx.fillText(text, x, y);
   }
 }
-// a planet's three lines in its colour: solid where it's highest, dashed where it rises and where it sets
+// a planet's three lines in its colour: solid where it's highest, a row of chevrons where it rises (pointing up) and
+// where it sets (pointing down)
 function drawLine(o, lw) {
   const isSel = o === sel, isHov = o === hov && !isSel;
   if (isSel) drawAltLines(o);
@@ -966,12 +969,11 @@ function drawLine(o, lw) {
   ctx.globalAlpha = isSel || isHov ? 1 : (sel ? 0.35 : 0.92) * (o.faint ? 0.75 : 1);
   for (const kind of KINDS) {
     ctx.lineWidth = (kind === 'transit' ? 1.9 : 1.2) * lw * (isSel ? 1.5 : 1) + (isHov && kind === hovKind ? 1 : 0);
-    ctx.setLineDash(kind === 'transit' ? [] : [5, 3.5]);
     ctx.beginPath();
-    for (const r of o.lines[kind]) r.forEach(([d, t], i) => (i ? ctx.lineTo(X(t), Y(d + 0.5)) : ctx.moveTo(X(t), Y(d + 0.5))));
+    if (kind === 'transit') for (const r of o.lines[kind]) r.forEach(([d, t], i) => (i ? ctx.lineTo(X(t), Y(d + 0.5)) : ctx.moveTo(X(t), Y(d + 0.5))));
+    else chevrons(o.lines[kind], kind === 'rise' ? -1 : 1, isSel ? 1.4 : 1);
     ctx.stroke();
   }
-  ctx.setLineDash([]);
   // opposition, or a greatest elongation
   for (const e of o.events) {
     if (e.t == null) continue;
@@ -986,6 +988,26 @@ function drawLine(o, lw) {
     ctx.moveTo(mx - 11, my); ctx.lineTo(mx - 7, my); ctx.moveTo(mx + 7, my); ctx.lineTo(mx + 11, my);
     ctx.moveTo(mx, my - 11); ctx.lineTo(mx, my - 7); ctx.moveTo(mx, my + 7); ctx.lineTo(mx, my + 11);
     ctx.stroke();
+  }
+}
+// chevrons spaced evenly along a line on screen, each pointing up (dir -1) or down (dir 1), added to the current path
+function chevrons(runs, dir, k) {
+  const gap = 9 * k, w = 3 * k, h = 1.6 * k * dir;
+  for (const r of runs) {
+    let px = 0, py = 0, next = gap / 2;
+    r.forEach(([d, t], i) => {
+      const x = X(t), y = Y(d + 0.5);
+      if (i) {
+        const len = Math.hypot(x - px, y - py);
+        for (; next <= len; next += gap) {
+          const f = next / len, cx = px + (x - px) * f, cy = py + (y - py) * f;
+          if (cy < -10 || cy > H + 10) continue;
+          ctx.moveTo(cx - w, cy - h); ctx.lineTo(cx, cy + h); ctx.lineTo(cx + w, cy - h);
+        }
+        next -= len;
+      }
+      px = x; py = y;
+    });
   }
 }
 // the middle of the longest stretch of a line among the rows in view: where its name goes
