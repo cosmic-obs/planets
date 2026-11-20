@@ -971,7 +971,7 @@ function drawLine(o, lw) {
     ctx.lineWidth = (kind === 'transit' ? 1.9 : 1.2) * lw * (isSel ? 1.5 : 1) + (isHov && kind === hovKind ? 1 : 0);
     ctx.beginPath();
     if (kind === 'transit') for (const r of o.lines[kind]) r.forEach(([d, t], i) => (i ? ctx.lineTo(X(t), Y(d + 0.5)) : ctx.moveTo(X(t), Y(d + 0.5))));
-    else chevrons(o.lines[kind], kind === 'rise' ? -1 : 1, isSel ? 1.4 : 1);
+    else chevrons(o.lines[kind], kind === 'rise' ? -1 : 1, isSel ? 1.12 : 0.8);
     ctx.stroke();
   }
   // opposition, or a greatest elongation
