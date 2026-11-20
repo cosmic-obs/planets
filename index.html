@@ -57,6 +57,10 @@ body.morphing #chart { pointer-events: none; }
 .sep { flex: none; width: 1px; height: 20px; margin-inline: 4px; background: var(--line); }
 .toggle { color: var(--soft); background: transparent; }
 .toggle[aria-pressed="true"] { color: var(--bg); background: #d5dce6; border-color: #d5dce6; }
+/* the year's arrows sit tight against it */
+.pill.step { padding: 6px 9px; font-size: 15px; color: var(--soft); background: transparent; border-color: transparent; }
+.pill.step:disabled { opacity: 0.3; cursor: default; }
+#yearbtn { margin-inline: -4px; }
 .pill .n { margin-left: 6px; font-weight: 400; opacity: 0.7; }
 .chips { flex: none; display: flex; gap: 6px; }
 /* a planet's chip: its colour as a dot and a rim while it's drawn, hollow and grey while it's off */
@@ -149,10 +153,12 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
   <button type="button" class="pill" id="skybtn" title="See the picked night as the sky overhead">Sky</button>
   <button type="button" class="pill toggle" id="moonbtn" aria-pressed="false">Moon</button>
   <span class="sep" aria-hidden="true"></span>
-  <span class="chips" id="chips" role="group" aria-label="Planets drawn"></span>
-  <span class="sep" aria-hidden="true"></span>
-  <button type="button" class="pill toggle" data-range="year" aria-pressed="false">Jan–Dec</button>
+  <button type="button" class="pill step" id="yprev" aria-label="Previous year">‹</button>
+  <button type="button" class="pill toggle" data-range="year" aria-pressed="false" id="yearbtn" title="Show this calendar year, January to December">2026</button>
+  <button type="button" class="pill step" id="ynext" aria-label="Next year">›</button>
   <button type="button" class="pill toggle" data-range="today" aria-pressed="false">Today ±6 mo</button>
+  <span class="sep" aria-hidden="true"></span>
+  <span class="chips" id="chips" role="group" aria-label="Planets drawn"></span>
 </nav>
 <div class="zoom" id="zoom" hidden>
   <button type="button" class="zbtn" id="zin" aria-label="Zoom in">+</button>
@@ -162,7 +168,7 @@ input[type="checkbox"] { accent-color: var(--accent); margin: 0; }
 <p class="hover" id="hover" hidden></p>
 <section class="panel dialog key" id="key" hidden>
   <div class="panel-top"><h2>Planet Calendar · <span id="place-name">Dublin</span></h2><span></span><button type="button" class="x" id="key-close" aria-label="Close">×</button></div>
-  <p>Each night is one row, earliest at the top: this calendar year, or the six months either side of tonight. Each planet has its own colour and three lines through the nights.</p>
+  <p>Each night is one row, earliest at the top: a calendar year (the arrows beside it pick which, 1900 to 2050), or the six months either side of tonight. Each planet has its own colour and three lines through the nights.</p>
   <ul>
     <li><i style="background: var(--sky-0)"></i>Night</li>
     <li><i style="background: var(--sky-1)"></i>Astronomical twilight</li>
@@ -218,10 +224,13 @@ try {
 let LAT = 0, LON = 0, sinLat = 0, cosLat = 1, zoneFmt = null, TZROW = [], STD = 0, DST_SPANS = [];
 const D2R = Math.PI / 180, R2D = 180 / Math.PI, SID = 1.00273790935, DAY = 864e5;
 // the rows: N consecutive nights from START (UTC midnight of the first date), either this calendar year or a year centred on tonight
-let range = 'year', START = 0, N = 365, JD0 = 0, todayRow = 1, MONTHS = [], MONTH_ROWS = new Set(), SEASONS = [];
+let range = 'year', YEAR = 0, START = 0, N = 365, JD0 = 0, todayRow = 1, MONTHS = [], MONTH_ROWS = new Set(), SEASONS = [];
 try { if (localStorage.getItem('planet-calendar-range') === 'today') range = 'today'; } catch {}
 // the night in progress or about to start: before 6 am it is still last night
 const tonight = (() => { const n = new Date(); if (n.getHours() < 6) n.setDate(n.getDate() - 1); return Date.UTC(n.getFullYear(), n.getMonth(), n.getDate()); })();
+// the year shown on Jan–Dec: this one when the page opens; the planets' orbits hold from 1800 to 2050
+const YEAR_MIN = 1900, YEAR_MAX = 2050;
+YEAR = new Date(tonight).getUTCFullYear();
 function setPlace(p) {
   PLACE = p; LAT = p.lat; LON = p.lon;
   sinLat = Math.sin(LAT * D2R); cosLat = Math.cos(LAT * D2R);
@@ -480,7 +489,7 @@ function computeObjects() {
 }
 function setRange(mode) {
   range = mode;
-  const y = new Date(tonight).getUTCFullYear(), rowOf = t => Math.round((t - START) / DAY) + 1;
+  const y = mode === 'today' ? new Date(tonight).getUTCFullYear() : YEAR, rowOf = t => Math.round((t - START) / DAY) + 1;
   START = mode === 'today' ? tonight - 182 * DAY : Date.UTC(y, 0, 1);
   N = mode === 'today' ? 365 : Math.round((Date.UTC(y + 1, 0, 1) - START) / DAY);
   JD0 = 2440587.5 + START / DAY;
@@ -1490,22 +1499,32 @@ for (const id of ['key', 'place']) makeDialog(id);
 makeDialog('card', { dock: true });
 const refreshObjs = syncChips;
 refreshObjs();
-// switching range keeps the picked date when it's still on the chart
+// switching range keeps the picked date when it's still on the chart; moving to another year keeps its day and month
 const rangeBtns = toolbar.querySelectorAll('[data-range]');
-const syncRange = () => rangeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.range === range)));
-for (const b of rangeBtns) b.addEventListener('click', () => {
-  if (b.dataset.range === range) return;
-  const picked = rowDate(selDay).getTime();
-  setRange(b.dataset.range);
+const syncRange = () => {
+  rangeBtns.forEach(b => b.setAttribute('aria-pressed', String(b.dataset.range === range)));
+  $('yearbtn').textContent = YEAR;
+  $('yprev').disabled = YEAR <= YEAR_MIN;
+  $('ynext').disabled = YEAR >= YEAR_MAX;
+};
+function showRange(mode, year = YEAR) {
+  if (mode === range && year === YEAR) return;
+  const picked = rowDate(selDay);
+  YEAR = year;
+  setRange(mode);
   try { localStorage.setItem('planet-calendar-range', range); } catch {}
-  const d = Math.round((picked - START) / DAY) + 1;
-  selDay = d >= 1 && d <= N ? d : todayRow;
+  let d = Math.round((picked.getTime() - START) / DAY) + 1;
+  if (d < 1 || d > N) d = mode === 'today' ? todayRow : Math.round((Date.UTC(year, picked.getUTCMonth(), picked.getUTCDate()) - START) / DAY) + 1;
+  selDay = clamp(d, 1, N);
   syncRange();
   if (sel) setMoment(selDay, moment.t);
   refreshObjs();
   ky0 = plot.h / N;
   centreOn(selDay);
-});
+}
+for (const b of rangeBtns) b.addEventListener('click', () => showRange(b.dataset.range));
+$('yprev').addEventListener('click', () => showRange('year', Math.max(YEAR_MIN, YEAR - 1)));
+$('ynext').addEventListener('click', () => showRange('year', Math.min(YEAR_MAX, YEAR + 1)));
 // ---------- location: search (Open-Meteo geocoding, which also gives the time zone) or the device's own position ----------
 const fmtLatLon = (lat, lon) => `${Math.abs(lat).toFixed(2)}°${lat < 0 ? 'S' : 'N'} ${Math.abs(lon).toFixed(2)}°${lon < 0 ? 'W' : 'E'}`;
 function showPlace() {
